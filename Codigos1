@@ -1,0 +1,39 @@
+use DBUniv1
+
+
+select * from Clientes;
+
+--Operadores logicos
+
+-- Like
+
+select * from Clientes
+where Nombre like 'J%';
+
+-- In
+
+select * from Clientes
+where ID_cliente in(1,2,3);
+
+-- Between
+
+select * from Pedidos
+where Monto_total between 200 and 500;
+
+-- Agrupacion de datos
+
+Select ID_pedido, SUM(4) as ID_cliente
+from Pedidos
+group by ID_pedido;
+
+select * from Pedidos;
+
+-- Clausula Group by
+
+Select ID_pedido, AVG(Monto_total) as Monto
+from Pedidos
+group by ID_pedido;
+
+-- Clausula having
+
+Select ID_cliente
