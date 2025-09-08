@@ -1,9 +1,25 @@
 use DBUniv1
 
+select 
+    c.Apellido,
+    c.Direccion,
+    p.Fecha_de_pedido,
+    p.Monto_total,
+    p.Estado,
+    pa.Fecha_pago,
+    pa.Metodo
+from Clientes c
+left join Pedidos p 
+    on c.ID_cliente = p.ID_cliente
+left join Pagos pa
+    on p.ID_pedido = pa.ID_pedido
+order by c.ID_cliente, p.Fecha_de_pedido desc;
+
+_____________________________________________________________________________________________________________
 
 select * from Clientes;
 
---Operadores logicos
+1 -- Operadores logicos
 
 -- Like
 
@@ -28,7 +44,7 @@ group by ID_pedido;
 
 select * from Pedidos;
 
--- Clausula Group by
+2 -- Clausula Group by
 
 Select ID_pedido, AVG(Monto_total) as Monto
 from Pedidos
