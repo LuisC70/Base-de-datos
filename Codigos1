@@ -37,3 +37,19 @@ group by ID_pedido;
 -- Clausula having
 
 Select ID_cliente
+select Direccion, count(*) as Email 
+from Clientes
+group by Direccion
+having COUNT(*) > 1; 
+
+-- Clausula case
+
+select ID_Pedido
+Monto,
+case
+when Monto < 300 then 'Bajo'
+when Monto between 300 and 500 then 'medio'
+else 'alto'
+end as ID_pago
+from Pagos;
+
