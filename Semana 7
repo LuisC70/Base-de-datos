@@ -1,0 +1,52 @@
+-- Semana 7:
+
+-- Insert:
+
+-- Insertar un nuevo cliente:
+INSERT INTO Clientes (DNI, Nombre, Apellido, Email, Direccion, Fecha_registro)
+VALUES ('88888888', 'Luis', 'Fernández', 'luis.fernandez@email.com', 'Av. Lima 123', GETDATE());
+
+-- Delete:
+
+-- 1. Verificar qué vamos a eliminar:
+SELECT 'Detalles a eliminar:' as Mensaje;
+SELECT * FROM Detalles_pedido WHERE ID_Pedido = 5001;
+
+SELECT 'Pedido a eliminar:' as Mensaje;
+SELECT * FROM Pedidos WHERE ID_pedido = 5001;
+
+-- 2. Eliminar detalles primero:
+DELETE FROM Detalles_pedido WHERE ID_Pedido = 5001;
+
+-- 3. Eliminar pedido:
+DELETE FROM Pedidos WHERE ID_pedido = 5001;
+
+-- 4. Confirmar eliminación:
+SELECT 'Eliminación completada' as Resultado;
+
+
+-- Update:
+
+-- Actualizar precio de un producto:
+UPDATE Productos 
+SET Precio = 949.90 
+WHERE ID_Producto = 1001;
+
+select * from Productos;
+
+-- Pivot:
+
+-- Ventas totales por metodo de pago por mes:
+SELECT *
+FROM (
+    SELECT 
+        Metodo_pago,
+        MONTH(Fecha_pedido) as Mes,
+        Total
+    FROM Pedidos
+    WHERE YEAR(Fecha_pedido) = 2024
+) as Ventas
+PIVOT (
+    SUM(Total)
+    FOR Metodo_pago IN ([Tarjeta de Crédito], [PayPal], [Efectivo], [Transferencia])
+) as PivotTable;
