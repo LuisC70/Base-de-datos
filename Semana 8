@@ -1,0 +1,27 @@
+BEGIN TRANSACTION;  // Para la verificacion si existe los clientes
+
+BEGIN TRY
+    -- Verificar que el cliente existe
+    IF NOT EXISTS (SELECT 1 FROM Clientes WHERE DNI = '12345678')
+    BEGIN
+        RAISERROR('Cliente no encontrado', 16, 1);
+    END
+    
+    -- 1. Eliminar detalles primero
+    DELETE FROM Detalles_pedido 
+    WHERE ID_Pedido IN (SELECT ID_pedido FROM Pedidos WHERE DNI_cliente = '12345678');
+    
+    -- 2. Eliminar pedidos
+    DELETE FROM Pedidos WHERE DNI_cliente = '12345678';
+    
+    -- 3. Eliminar cliente
+    DELETE FROM Clientes WHERE DNI = '12345678';
+    
+    COMMIT TRANSACTION;
+    PRINT 'Cliente y registros relacionados eliminados';
+    
+END TRY
+BEGIN CATCH
+    ROLLBACK TRANSACTION;
+    PRINT 'Error al eliminar: ' + ERROR_MESSAGE();
+END CATCH
