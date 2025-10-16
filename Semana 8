@@ -25,3 +25,53 @@ BEGIN CATCH
     ROLLBACK TRANSACTION;
     PRINT 'Error al eliminar: ' + ERROR_MESSAGE();
 END CATCH
+
+
+Funciones:
+
+1. Función Escalar (retorna un valor):
+
+-- Calcular IVA (19%)
+CREATE FUNCTION dbo.CalcularIVA(@Monto DECIMAL(10,2))
+RETURNS DECIMAL(10,2)
+AS
+BEGIN
+    RETURN @Monto * 0.19;
+END;
+
+2. Función con Lógica de Negocio:
+
+-- Clasificar clientes por antigüedad
+
+CREATE FUNCTION dbo.ClasificarCliente(@FechaRegistro DATE)
+RETURNS VARCHAR(20)
+AS
+BEGIN
+    DECLARE @Antiguedad INT = DATEDIFF(YEAR, @FechaRegistro, GETDATE());
+    DECLARE @Clasificacion VARCHAR(20);
+    
+    IF @Antiguedad >= 5
+        SET @Clasificacion = 'VIP';
+    ELSE IF @Antiguedad >= 2
+        SET @Clasificacion = 'Regular';
+    ELSE
+        SET @Clasificacion = 'Nuevo';
+        
+    RETURN @Clasificacion;
+END;
+
+Función con Tabla en Línea (retorna tabla:
+
+-- Obtener productos por categoría
+CREATE FUNCTION dbo.ObtenerProductosPorCategoria(@ID_Categoria INT)
+RETURNS TABLE
+AS
+RETURN (
+    SELECT 
+        ID_Producto,
+        Nombre,
+        Precio,
+        Stock
+    FROM Productos
+    WHERE ID_Categoria = @ID_Categoria AND Activo = 1
+);
