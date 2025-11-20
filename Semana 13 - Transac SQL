@@ -1,0 +1,126 @@
+CREATE FUNCTION dbo.CalcularIGV
+(
+    @Monto DECIMAL(10,2)
+)
+RETURNS DECIMAL(10,2)
+AS
+BEGIN
+    DECLARE @IGV DECIMAL(10,2);
+    SET @IGV = @Monto * 0.18; -- 18% IGV
+    RETURN @IGV;
+END;
+GO
+
+-- Usar la función
+SELECT 
+    Total,
+    dbo.CalcularIGV(Total) AS IGV,
+    Total + dbo.CalcularIGV(Total) AS TotalConIGV
+FROM Pedidos;
+
+__________________________________________________
+
+CREATE PROCEDURE dbo.InsertarProducto
+(
+    @Nombre VARCHAR(100),
+    @Descripcion TEXT,
+    @Precio DECIMAL(10,2),
+    @ID_Categoria INT,
+    @Stock INT,
+    @Marca VARCHAR(50)
+)
+AS
+BEGIN
+    DECLARE @NuevoID INT;
+    
+    -- Obtener próximo ID
+    SELECT @NuevoID = ISNULL(MAX(ID_Producto), 0) + 1 FROM Productos;
+    
+    INSERT INTO Productos (ID_Producto, Nombre, Descripcion, Precio, ID_Categoria, Stock, Marca, Fecha_creacion, Activo)
+    VALUES (@NuevoID, @Nombre, @Descripcion, @Precio, @ID_Categoria, @Stock, @Marca, GETDATE(), 1);
+    
+    PRINT 'Producto insertado correctamente con ID: ' + CAST(@NuevoID AS VARCHAR);
+END;
+GO
+
+-- Ejecutar procedimiento
+EXEC dbo.InsertarProducto 
+    @Nombre = 'Monitor LED 24"',
+    @Descripcion = 'Monitor Full HD 24 pulgadas',
+    @Precio = 599.90,
+    @ID_Categoria = 2,
+    @Stock = 25,
+    @Marca = 'Samsung';
+
+__________________________________________________
+
+-- Variables para estadísticas
+DECLARE @TotalProductos INT;
+DECLARE @PrecioPromedio DECIMAL(10,2);
+DECLARE @ProductoMasCaro DECIMAL(10,2);
+
+SELECT 
+    @TotalProductos = COUNT(*),
+    @PrecioPromedio = AVG(Precio),
+    @ProductoMasCaro = MAX(Precio)
+FROM Productos;
+
+PRINT 'Total de productos: ' + CAST(@TotalProductos AS VARCHAR);
+PRINT 'Precio promedio: S/ ' + CAST(@PrecioPromedio AS VARCHAR);
+PRINT 'Producto más caro: S/ ' + CAST(@ProductoMasCaro AS VARCHAR);
+
+__________________________________________________
+
+DECLARE @TotalVentas DECIMAL(10,2);
+DECLARE @CategoriaVentas VARCHAR(20);
+
+SELECT @TotalVentas = SUM(Total) FROM Pedidos;
+
+IF @TotalVentas > 10000
+    SET @CategoriaVentas = 'ALTO'
+ELSE IF @TotalVentas BETWEEN 5000 AND 10000
+    SET @CategoriaVentas = 'MEDIO'
+ELSE
+    SET @CategoriaVentas = 'BAJO'
+
+PRINT 'Total Ventas: S/ ' + CAST(@TotalVentas AS VARCHAR) + ' - Categoría: ' + @CategoriaVentas;
+
+__________________________________________________
+
+-- Cursor para actualizar precios por categoría
+DECLARE @ProductoID INT;
+DECLARE @PrecioActual DECIMAL(10,2);
+DECLARE @CategoriaID INT;
+DECLARE @Aumento DECIMAL(5,2);
+
+DECLARE producto_cursor CURSOR FOR
+SELECT ID_Producto, Precio, ID_Categoria
+FROM Productos
+WHERE Activo = 1;
+
+OPEN producto_cursor;
+FETCH NEXT FROM producto_cursor INTO @ProductoID, @PrecioActual, @CategoriaID;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    -- Definir aumento según categoría
+    IF @CategoriaID IN (1, 2, 5) -- Electrónicos, Computadoras, Smartphones
+        SET @Aumento = 1.05 -- 5% de aumento
+    ELSE IF @CategoriaID IN (8, 9, 10) -- Hogar, Muebles, Decoración
+        SET @Aumento = 1.03 -- 3% de aumento
+    ELSE
+        SET @Aumento = 1.02 -- 2% de aumento
+    
+    -- Actualizar precio
+    UPDATE Productos 
+    SET Precio = @PrecioActual * @Aumento
+    WHERE ID_Producto = @ProductoID;
+    
+    PRINT 'Producto ID ' + CAST(@ProductoID AS VARCHAR) + 
+          ' - Precio actualizado: ' + CAST(@PrecioActual * @Aumento AS VARCHAR);
+    
+    FETCH NEXT FROM producto_cursor INTO @ProductoID, @PrecioActual, @CategoriaID;
+END;
+
+CLOSE producto_cursor;
+DEALLOCATE producto_cursor;
