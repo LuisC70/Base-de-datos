@@ -1,0 +1,101 @@
+-- Contar total de clientes
+SELECT COUNT(*) AS TotalClientes FROM Clientes;
+
+-- Contar clientes con teléfono (no nulos)
+SELECT COUNT(Telefono) AS ClientesConTelefono FROM Clientes;
+
+-- Contar pedidos por estado
+SELECT Estado, COUNT(*) AS CantidadPedidos 
+FROM Pedidos 
+GROUP BY Estado;
+
+____________________________________________________________
+
+-- Total de ventas en todos los pedidos
+SELECT SUM(Total) AS VentasTotales FROM Pedidos;
+
+-- Suma de subtotales por pedido
+SELECT ID_Pedido, SUM(Subtotal) AS TotalPedido
+FROM Detalles_pedido 
+GROUP BY ID_Pedido;
+
+-- Ventas totales por método de pago
+SELECT Metodo_pago, SUM(Total) AS TotalVentas
+FROM Pedidos 
+GROUP BY Metodo_pago;
+
+____________________________________________________________
+
+-- Precio promedio de productos
+SELECT AVG(Precio) AS PrecioPromedio FROM Productos;
+
+-- Promedio de ventas por pedido
+SELECT AVG(Total) AS PromedioVenta FROM Pedidos;
+
+-- Stock promedio por categoría
+SELECT c.Nombre AS Categoria, AVG(p.Stock) AS StockPromedio
+FROM Productos p
+JOIN Categorias c ON p.ID_Categoria = c.ID_Categoria
+GROUP BY c.Nombre;
+
+____________________________________________________________
+
+-- Producto más caro y más barato
+SELECT MAX(Precio) AS PrecioMaximo, MIN(Precio) AS PrecioMinimo 
+FROM Productos;
+
+-- Pedido con mayor y menor total
+SELECT MAX(Total) AS PedidoMasAlto, MIN(Total) AS PedidoMasBajo 
+FROM Pedidos;
+
+-- Fechas extremas de registro de clientes
+SELECT MIN(Fecha_registro) AS PrimerCliente, 
+       MAX(Fecha_registro) AS UltimoCliente 
+FROM Clientes;
+
+____________________________________________________________
+
+-- Cantidad de productos por categoría
+SELECT c.Nombre AS Categoria, COUNT(*) AS TotalProductos
+FROM Productos p
+JOIN Categorias c ON p.ID_Categoria = c.ID_Categoria
+GROUP BY c.Nombre;
+
+-- Ventas totales por departamento del cliente
+SELECT cl.Departamento, SUM(p.Total) AS VentasTotales
+FROM Pedidos p
+JOIN Clientes cl ON p.DNI_cliente = cl.DNI
+GROUP BY cl.Departamento;
+
+____________________________________________________________
+
+-- Ventas por departamento y método de pago
+SELECT cl.Departamento, p.Metodo_pago, 
+       COUNT(*) AS CantidadPedidos,
+       SUM(p.Total) AS TotalVentas
+FROM Pedidos p
+JOIN Clientes cl ON p.DNI_cliente = cl.DNI
+GROUP BY cl.Departamento, p.Metodo_pago;
+
+____________________________________________________________
+
+-- Categorías con más de 5 productos
+SELECT c.Nombre AS Categoria, COUNT(*) AS TotalProductos
+FROM Productos p
+JOIN Categorias c ON p.ID_Categoria = c.ID_Categoria
+GROUP BY c.Nombre
+HAVING COUNT(*) > 5;
+
+-- Departamentos con ventas superiores a 1000
+SELECT cl.Departamento, SUM(p.Total) AS VentasTotales
+FROM Pedidos p
+JOIN Clientes cl ON p.DNI_cliente = cl.DNI
+GROUP BY cl.Departamento
+HAVING SUM(p.Total) > 1000;
+
+-- Empleados que han realizado más de 3 movimientos de inventario
+SELECT e.Nombre, COUNT(*) AS Movimientos
+FROM inventario i
+JOIN Empleados e ON i.DNI_Empleado = e.DNI
+GROUP BY e.Nombre
+HAVING COUNT(*) > 3;
