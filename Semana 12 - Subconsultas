@@ -1,0 +1,209 @@
+-- Clientes que han realizado pedidos
+SELECT Nombre, Apellido, Email
+FROM Clientes
+WHERE DNI IN (SELECT DISTINCT DNI_cliente FROM Pedidos);
+
+-- Productos que nunca se han vendido
+SELECT Nombre, Precio
+FROM Productos
+WHERE ID_Producto NOT IN (SELECT DISTINCT ID_Producto FROM Detalles_pedido);
+
+-- Empleados que han realizado movimientos de inventario
+SELECT Nombre, Apellido, Cargo
+FROM Empleados
+WHERE DNI IN (SELECT DISTINCT DNI_Empleado FROM inventario);
+
+__________________________________________________________________
+
+-- Clientes que tienen pedidos (más eficiente que IN)
+SELECT Nombre, Apellido
+FROM Clientes c
+WHERE EXISTS (SELECT 1 FROM Pedidos p WHERE p.DNI_cliente = c.DNI);
+
+-- Productos con stock bajo que han sido vendidos
+SELECT Nombre, Stock
+FROM Productos p
+WHERE Stock < 10 
+AND EXISTS (SELECT 1 FROM Detalles_pedido dp WHERE dp.ID_Producto = p.ID_Producto);
+
+-- Categorías que tienen productos activos
+SELECT Nombre
+FROM Categorias c
+WHERE EXISTS (SELECT 1 FROM Productos p WHERE p.ID_Categoria = c.ID_Categoria AND p.Activo = 1);
+
+__________________________________________________________________
+
+-- Fecha actual y sus componentes
+SELECT 
+    GETDATE() AS FechaActual,
+    DAY(GETDATE()) AS Dia,
+    MONTH(GETDATE()) AS Mes,
+    YEAR(GETDATE()) AS Año;
+
+-- Edad de los clientes (en años)
+SELECT 
+    Nombre, 
+    Apellido,
+    Fecha_registro,
+    DATEDIFF(YEAR, Fecha_registro, GETDATE()) AS AntiguedadAnios,
+    DATEDIFF(MONTH, Fecha_registro, GETDATE()) AS AntiguedadMeses
+FROM Clientes;
+
+-- Pedidos de los últimos 30 días
+SELECT ID_pedido, Fecha_pedido, Total
+FROM Pedidos
+WHERE Fecha_pedido >= DATEADD(DAY, -30, GETDATE());
+
+__________________________________________________________________
+
+-- Próximos vencimientos (ejemplo: productos que se crearán)
+SELECT 
+    Nombre,
+    Fecha_creacion,
+    DATEADD(MONTH, 6, Fecha_creacion) AS FechaRevision
+FROM Productos;
+
+-- Días transcurridos desde el primer pedido
+SELECT 
+    DNI_cliente,
+    MIN(Fecha_pedido) AS PrimerPedido,
+    DATEDIFF(DAY, MIN(Fecha_pedido), GETDATE()) AS DiasDesdePrimerPedido
+FROM Pedidos
+GROUP BY DNI_cliente;
+
+-- Análisis mensual de pedidos
+SELECT 
+    YEAR(Fecha_pedido) AS Año,
+    MONTH(Fecha_pedido) AS Mes,
+    COUNT(*) AS TotalPedidos,
+    SUM(Total) AS VentasTotales
+FROM Pedidos
+GROUP BY YEAR(Fecha_pedido), MONTH(Fecha_pedido)
+ORDER BY Año DESC, Mes DESC;
+
+__________________________________________________________________
+
+-- Nombres completos de clientes
+SELECT 
+    DNI,
+    CONCAT(Nombre, ' ', Apellido) AS NombreCompleto,
+    LEN(CONCAT(Nombre, ' ', Apellido)) AS LongitudNombre
+FROM Clientes;
+
+-- Análisis de emails
+SELECT 
+    Email,
+    SUBSTRING(Email, 1, CHARINDEX('@', Email) - 1) AS Usuario,
+    SUBSTRING(Email, CHARINDEX('@', Email) + 1, LEN(Email)) AS Dominio
+FROM Clientes;
+
+-- Formateo de texto
+SELECT 
+    UPPER(Nombre) AS NombreMayusculas,
+    LOWER(Apellido) AS ApellidoMinusculas,
+    LTRIM(RTRIM(Direccion)) AS DireccionLimpia
+FROM Clientes;
+
+__________________________________________________________________
+
+-- Productos que contienen "Samsung"
+SELECT Nombre, Descripcion
+FROM Productos
+WHERE LOWER(Nombre) LIKE '%samsung%' 
+   OR LOWER(Descripcion) LIKE '%samsung%';
+
+-- Extraer marca del nombre del producto (ejemplo)
+SELECT 
+    Nombre,
+    SUBSTRING(Nombre, 1, CHARINDEX(' ', Nombre + ' ') - 1) AS PosibleMarca
+FROM Productos
+WHERE CHARINDEX(' ', Nombre) > 0;
+
+__________________________________________________________________
+
+-- Conversión de tipos de datos
+SELECT 
+    ID_Producto,
+    Nombre,
+    CAST(Precio AS DECIMAL(10,0)) AS PrecioSinDecimales,
+    CONVERT(VARCHAR, Fecha_creacion, 103) AS FechaFormatoDDMMYYYY,
+    CAST(Stock AS VARCHAR) + ' unidades' AS StockTexto
+FROM Productos;
+
+-- Formateo de fechas para reportes
+SELECT 
+    ID_pedido,
+    Fecha_pedido,
+    CONVERT(VARCHAR, Fecha_pedido, 101) AS FechaUS,  -- MM/DD/YYYY
+    CONVERT(VARCHAR, Fecha_pedido, 103) AS FechaEU,  -- DD/MM/YYYY
+    CONVERT(VARCHAR, Fecha_pedido, 112) AS FechaISO  -- YYYYMMDD
+FROM Pedidos;
+
+__________________________________________________________________
+
+-- Clientes con su último pedido (usando subconsulta correlacionada)
+SELECT 
+    c.DNI,
+    CONCAT(c.Nombre, ' ', c.Apellido) AS Cliente,
+    (SELECT CONVERT(VARCHAR, MAX(Fecha_pedido), 103) 
+     FROM Pedidos p 
+     WHERE p.DNI_cliente = c.DNI) AS UltimoPedido,
+    DATEDIFF(DAY, 
+             (SELECT MAX(Fecha_pedido) FROM Pedidos p WHERE p.DNI_cliente = c.DNI),
+             GETDATE()) AS DiasSinComprar
+FROM Clientes c
+WHERE EXISTS (SELECT 1 FROM Pedidos p WHERE p.DNI_cliente = c.DNI);
+
+__________________________________________________________________
+
+-- Productos con información de ventas
+SELECT 
+    p.Nombre,
+    p.Precio,
+    CAST(p.Stock AS VARCHAR) + ' unidades' AS StockDisponible,
+    (SELECT COUNT(*) FROM Detalles_pedido dp WHERE dp.ID_Producto = p.ID_Producto) AS VecesVendido,
+    (SELECT CONVERT(VARCHAR, MAX(i.Fecha_movimiento), 103) 
+     FROM inventario i 
+     WHERE i.ID_Producto = p.ID_Producto) AS UltimoMovimiento
+FROM Productos p
+WHERE p.Activo = 1;
+
+__________________________________________________________________
+
+-- Reporte completo de ventas por cliente
+SELECT 
+    c.DNI,
+    UPPER(CONCAT(c.Apellido, ', ', c.Nombre)) AS ClienteFormateado,
+    c.Departamento,
+    (SELECT COUNT(*) FROM Pedidos p WHERE p.DNI_cliente = c.DNI) AS TotalPedidos,
+    (SELECT SUM(Total) FROM Pedidos p WHERE p.DNI_cliente = c.DNI) AS TotalCompras,
+    CONVERT(VARCHAR, c.Fecha_registro, 103) AS FechaRegistro,
+    DATEDIFF(MONTH, c.Fecha_registro, GETDATE()) AS MesesComoCliente,
+    CASE 
+        WHEN (SELECT COUNT(*) FROM Pedidos p WHERE p.DNI_cliente = c.DNI) > 5 THEN 'Cliente Frecuente'
+        WHEN (SELECT COUNT(*) FROM Pedidos p WHERE p.DNI_cliente = c.DNI) > 2 THEN 'Cliente Regular'
+        ELSE 'Cliente Ocasional'
+    END AS CategoriaCliente
+FROM Clientes c
+WHERE EXISTS (SELECT 1 FROM Pedidos p WHERE p.DNI_cliente = c.DNI)
+ORDER BY TotalCompras DESC;
+
+__________________________________________________________________
+
+-- IN: Mejor cuando la subconsulta retorna pocos valores
+SELECT * FROM Productos 
+WHERE ID_Categoria IN (SELECT ID_Categoria FROM Categorias WHERE Nombre LIKE '%Electrónicos%');
+
+-- EXISTS: Mejor cuando necesitas verificar existencia (más eficiente con muchos datos)
+SELECT * FROM Productos p
+WHERE EXISTS (SELECT 1 FROM Categorias c 
+              WHERE c.ID_Categoria = p.ID_Categoria 
+              AND c.Nombre LIKE '%Electrónicos%');
+
+__________________________________________________________________
+
+-- CAST: Estándar ANSI, más simple
+SELECT CAST(Precio AS INT) FROM Productos;
+
+-- CONVERT: Específico de SQL Server, más opciones de formato
+SELECT CONVERT(VARCHAR, GETDATE(), 103) AS FechaFormateada;
