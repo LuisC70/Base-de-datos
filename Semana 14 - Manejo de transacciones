@@ -1,0 +1,287 @@
+-- base de datos: Transferencia de inventario entre productos
+BEGIN TRANSACTION;
+
+BEGIN TRY
+    -- Disminuir stock del producto origen
+    UPDATE Productos 
+    SET Stock = Stock - 5 
+    WHERE ID_Producto = 1001;
+    
+    -- Aumentar stock del producto destino
+    UPDATE Productos 
+    SET Stock = Stock + 5 
+    WHERE ID_Producto = 1002;
+    
+    -- Registrar movimiento de inventario
+    INSERT INTO inventario (ID_Movimiento, ID_Producto, Tipo_movimiento, Cantidad, Fecha_movimiento, Observaciones)
+    VALUES (
+        (SELECT ISNULL(MAX(ID_Movimiento), 0) + 1 FROM inventario),
+        1001,
+        'Salida',
+        5,
+        GETDATE(),
+        'Transferencia a producto 1002'
+    );
+    
+    -- Si todo sale bien, confirmar
+    COMMIT TRANSACTION;
+    PRINT 'Transferencia completada exitosamente';
+END TRY
+BEGIN CATCH
+    -- Si hay error, revertir todo
+    ROLLBACK TRANSACTION;
+    PRINT 'Error en transferencia: ' + ERROR_MESSAGE();
+END CATCH;
+______________________________________________
+
+CREATE PROCEDURE dbo.RealizarVenta
+    @DNICliente VARCHAR(8),
+    @IDProducto INT,
+    @Cantidad INT,
+    @MetodoPago VARCHAR(50)
+AS
+BEGIN
+    DECLARE @NuevoPedidoID INT;
+    DECLARE @NuevoDetalleID INT;
+    DECLARE @PrecioUnitario DECIMAL(10,2);
+    DECLARE @Subtotal DECIMAL(10,2);
+    DECLARE @DireccionEntrega VARCHAR(200);
+    
+    BEGIN TRANSACTION;
+    
+    BEGIN TRY
+        -- 1. Validar que el cliente existe
+        IF NOT EXISTS (SELECT 1 FROM Clientes WHERE DNI = @DNICliente)
+        BEGIN
+            RAISERROR('Cliente no encontrado', 16, 1);
+        END
+        
+        -- 2. Validar que el producto existe y tiene stock
+        SELECT @PrecioUnitario = Precio 
+        FROM Productos 
+        WHERE ID_Producto = @IDProducto AND Activo = 1;
+        
+        IF @PrecioUnitario IS NULL
+        BEGIN
+            RAISERROR('Producto no disponible', 16, 1);
+        END
+        
+        IF (SELECT Stock FROM Productos WHERE ID_Producto = @IDProducto) < @Cantidad
+        BEGIN
+            RAISERROR('Stock insuficiente', 16, 1);
+        END
+        
+        -- 3. Obtener dirección del cliente
+        SELECT @DireccionEntrega = Direccion 
+        FROM Clientes 
+        WHERE DNI = @DNICliente;
+        
+        -- 4. Calcular subtotal
+        SET @Subtotal = @PrecioUnitario * @Cantidad;
+        
+        -- 5. Generar nuevo ID de pedido
+        SELECT @NuevoPedidoID = ISNULL(MAX(ID_pedido), 0) + 1 FROM Pedidos;
+        
+        -- 6. Insertar pedido
+        INSERT INTO Pedidos (ID_pedido, DNI_cliente, Fecha_pedido, Estado, Total, Direccion_entrega, Metodo_pago)
+        VALUES (@NuevoPedidoID, @DNICliente, GETDATE(), 'pendiente', @Subtotal, @DireccionEntrega, @MetodoPago);
+        
+        -- 7. Generar nuevo ID de detalle
+        SELECT @NuevoDetalleID = ISNULL(MAX(ID_Detalle), 0) + 1 FROM Detalles_pedido;
+        
+        -- 8. Insertar detalle del pedido
+        INSERT INTO Detalles_pedido (ID_Detalle, ID_Pedido, ID_Producto, Cantidad, Precio_unitario, Subtotal)
+        VALUES (@NuevoDetalleID, @NuevoPedidoID, @IDProducto, @Cantidad, @PrecioUnitario, @Subtotal);
+        
+        -- 9. Actualizar stock del producto
+        UPDATE Productos 
+        SET Stock = Stock - @Cantidad 
+        WHERE ID_Producto = @IDProducto;
+        
+        -- 10. Registrar movimiento de inventario
+        INSERT INTO inventario (ID_Movimiento, ID_Producto, Tipo_movimiento, Cantidad, Fecha_movimiento, Observaciones)
+        VALUES (
+            (SELECT ISNULL(MAX(ID_Movimiento), 0) + 1 FROM inventario),
+            @IDProducto,
+            'Salida',
+            @Cantidad,
+            GETDATE(),
+            'Venta - Pedido ' + CAST(@NuevoPedidoID AS VARCHAR)
+        );
+        
+        -- Confirmar transacción
+        COMMIT TRANSACTION;
+        
+        PRINT 'Venta registrada exitosamente. Pedido ID: ' + CAST(@NuevoPedidoID AS VARCHAR);
+        PRINT 'Total: S/ ' + CAST(@Subtotal AS VARCHAR);
+        
+    END TRY
+    BEGIN CATCH
+        -- Revertir en caso de error
+        ROLLBACK TRANSACTION;
+        
+        DECLARE @ErrorMessage VARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        
+        PRINT 'Error en la venta: ' + @ErrorMessage;
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO
+
+-- Ejecutar la venta
+EXEC dbo.RealizarVenta 
+    @DNICliente = '12345678',
+    @IDProducto = 1001,
+    @Cantidad = 2,
+    @MetodoPago = 'Tarjeta de Crédito';
+
+______________________________________________
+
+CREATE PROCEDURE dbo.ProcesarCarritoCompra
+    @DNICliente VARCHAR(8),
+    @Productos XML  -- XML con productos: <productos><producto id="1001" cantidad="2"/></productos>
+AS
+BEGIN
+    DECLARE @NuevoPedidoID INT;
+    DECLARE @TotalPedido DECIMAL(10,2) = 0;
+    DECLARE @DireccionEntrega VARCHAR(200);
+    
+    BEGIN TRANSACTION;
+    
+    BEGIN TRY
+        -- Validar cliente
+        IF NOT EXISTS (SELECT 1 FROM Clientes WHERE DNI = @DNICliente)
+            RAISERROR('Cliente no encontrado', 16, 1);
+        
+        -- Obtener dirección
+        SELECT @DireccionEntrega = Direccion FROM Clientes WHERE DNI = @DNICliente;
+        
+        -- Generar ID de pedido
+        SELECT @NuevoPedidoID = ISNULL(MAX(ID_pedido), 0) + 1 FROM Pedidos;
+        
+        -- Procesar cada producto del carrito
+        DECLARE @IDProducto INT, @Cantidad INT, @Precio DECIMAL(10,2);
+        DECLARE @NuevoDetalleID INT = (SELECT ISNULL(MAX(ID_Detalle), 0) FROM Detalles_pedido);
+        
+        DECLARE producto_cursor CURSOR FOR
+        SELECT 
+            T.Item.value('@id', 'INT') AS IDProducto,
+            T.Item.value('@cantidad', 'INT') AS Cantidad
+        FROM @Productos.nodes('/productos/producto') AS T(Item);
+        
+        OPEN producto_cursor;
+        FETCH NEXT FROM producto_cursor INTO @IDProducto, @Cantidad;
+        
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            -- Validar producto y stock
+            SELECT @Precio = Precio 
+            FROM Productos 
+            WHERE ID_Producto = @IDProducto AND Activo = 1;
+            
+            IF @Precio IS NULL
+                RAISERROR('Producto ID %d no disponible', 16, 1, @IDProducto);
+            
+            IF (SELECT Stock FROM Productos WHERE ID_Producto = @IDProducto) < @Cantidad
+                RAISERROR('Stock insuficiente para producto ID %d', 16, 1, @IDProducto);
+            
+            -- Calcular subtotal
+            DECLARE @Subtotal DECIMAL(10,2) = @Precio * @Cantidad;
+            SET @TotalPedido = @TotalPedido + @Subtotal;
+            
+            -- Insertar detalle
+            SET @NuevoDetalleID = @NuevoDetalleID + 1;
+            INSERT INTO Detalles_pedido (ID_Detalle, ID_Pedido, ID_Producto, Cantidad, Precio_unitario, Subtotal)
+            VALUES (@NuevoDetalleID, @NuevoPedidoID, @IDProducto, @Cantidad, @Precio, @Subtotal);
+            
+            -- Actualizar stock
+            UPDATE Productos SET Stock = Stock - @Cantidad WHERE ID_Producto = @IDProducto;
+            
+            -- Registrar movimiento de inventario
+            INSERT INTO inventario (ID_Movimiento, ID_Producto, Tipo_movimiento, Cantidad, Fecha_movimiento, Observaciones)
+            VALUES (
+                (SELECT ISNULL(MAX(ID_Movimiento), 0) + 1 FROM inventario),
+                @IDProducto,
+                'Salida',
+                @Cantidad,
+                GETDATE(),
+                'Venta múltiple - Pedido ' + CAST(@NuevoPedidoID AS VARCHAR)
+            );
+            
+            FETCH NEXT FROM producto_cursor INTO @IDProducto, @Cantidad;
+        END
+        
+        CLOSE producto_cursor;
+        DEALLOCATE producto_cursor;
+        
+        -- Insertar pedido principal
+        INSERT INTO Pedidos (ID_pedido, DNI_cliente, Fecha_pedido, Estado, Total, Direccion_entrega, Metodo_pago)
+        VALUES (@NuevoPedidoID, @DNICliente, GETDATE(), 'confirmado', @TotalPedido, @DireccionEntrega, 'Mixto');
+        
+        COMMIT TRANSACTION;
+        PRINT 'Carrito procesado exitosamente. Pedido ID: ' + CAST(@NuevoPedidoID AS VARCHAR);
+        
+    END TRY
+    BEGIN CATCH
+        IF CURSOR_STATUS('local', 'producto_cursor') >= 0
+        BEGIN
+            CLOSE producto_cursor;
+            DEALLOCATE producto_cursor;
+        END
+        
+        ROLLBACK TRANSACTION;
+        PRINT 'Error procesando carrito: ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
+
+-- Ejecutar con múltiples productos
+DECLARE @Carrito XML = '
+<productos>
+    <producto id="1001" cantidad="1"/>
+    <producto id="1002" cantidad="2"/>
+    <producto id="1003" cantidad="1"/>
+</productos>';
+
+EXEC dbo.ProcesarCarritoCompra 
+    @DNICliente = '12345678',
+    @Productos = @Carrito;
+______________________________________________
+
+BEGIN TRANSACTION;
+
+BEGIN TRY
+    -- Operación 1: Actualizar producto
+    UPDATE Productos SET Precio = Precio * 1.10 WHERE ID_Categoria = 1; -- Electrónicos +10%
+    PRINT 'Precios de electrónicos actualizados';
+    
+    -- Crear savepoint
+    SAVE TRANSACTION Punto1;
+    
+    -- Operación 2: Actualizar otro grupo
+    UPDATE Productos SET Precio = Precio * 1.05 WHERE ID_Categoria = 2; -- Computadoras +5%
+    PRINT 'Precios de computadoras actualizados';
+    
+    -- Verificar si hay productos con precio muy alto
+    IF EXISTS (SELECT 1 FROM Productos WHERE Precio > 5000 AND ID_Categoria = 2)
+    BEGIN
+        -- Revertir solo la última operación
+        ROLLBACK TRANSACTION Punto1;
+        PRINT 'Se revirtió aumento de computadoras (precios muy altos)';
+    END
+    
+    -- Operación 3: Actualizar stock
+    UPDATE Productos SET Stock = Stock + 10 WHERE Stock < 5;
+    PRINT 'Stock de productos críticos repuesto';
+    
+    -- Confirmar transacción (solo operaciones no revertidas)
+    COMMIT TRANSACTION;
+    PRINT 'Transacción completada parcialmente';
+    
+END TRY
+BEGIN CATCH
+    ROLLBACK TRANSACTION;
+    PRINT 'Error: ' + ERROR_MESSAGE();
+END CATCH;
