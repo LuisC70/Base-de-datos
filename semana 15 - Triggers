@@ -1,0 +1,53 @@
+CREATE TRIGGER trg_AfterInsert_Empleado
+ON Empleados
+AFTER INSERT
+AS
+BEGIN
+    INSERT INTO AuditoriaEmpleados (EmpleadoID, Accion, Fecha)
+    SELECT i.EmpleadoID, 'INSERT', GETDATE()
+    FROM inserted i;
+END;
+_____________________________________________________
+
+CREATE TRIGGER trg_AfterUpdate_Sueldo
+ON Empleados
+AFTER UPDATE
+AS
+BEGIN
+    INSERT INTO AuditoriaSueldos (EmpleadoID, SueldoAnterior, SueldoNuevo, Fecha)
+    SELECT d.EmpleadoID, d.Sueldo, i.Sueldo, GETDATE()
+    FROM deleted d
+    INNER JOIN inserted i ON d.EmpleadoID = i.EmpleadoID
+    WHERE d.Sueldo <> i.Sueldo;
+END;
+
+_____________________________________________________
+
+CREATE TRIGGER trg_AfterDelete_Empleado
+ON Empleados
+AFTER DELETE
+AS
+BEGIN
+    INSERT INTO AuditoriaEliminacion (EmpleadoID, Fecha)
+    SELECT d.EmpleadoID, GETDATE()
+    FROM deleted d;
+END;
+
+_____________________________________________________
+
+CREATE TRIGGER trg_InsteadOfInsert_vwEmpleados
+ON vw_Empleados
+INSTEAD OF INSERT
+AS
+BEGIN
+    INSERT INTO Empleados (Nombre, Correo)
+    SELECT Nombre, Correo
+    FROM inserted;
+
+    INSERT INTO EmpleadoDetalles (EmpleadoID, Direccion)
+    SELECT i.EmpleadoID, i.Direccion
+    FROM inserted i;
+END;
+
+_____________________________________________________
+
